@@ -1,0 +1,209 @@
+                         # ML Model for predicting customer satifaction
+-------------------------------------------------------------------------------------
+install.packages("polycor")
+# Loding the required packages
+library(polycor)
+library(MASS)
+library(datasets)
+library(ggplot2)
+library(lattice)
+library(corrplot)
+library(caret)
+library(glmnet)
+library(C50)
+library(randomForest)
+library(Matrix)
+library(gbm)
+library(mice)
+library(corrplot)
+library(rpart)
+library(caTools)
+#Import the Customer satisfaction dataset into R
+Satisfaction<- Case.Study.2020.Table.1[,24]
+Satisfaction<-as.factor(Satisfaction)
+Case.Study.2020.Table.1<- Case.Study.2020.Table.1[,-24]
+Case.Study.2020.Table.3<- cbind(Case.Study.2020.Table.1,Satisfaction)
+head(Case.Study.2020.Table.3)
+View(Case.Study.2020.Table.3)
+#Check the data type of different objects
+str(Case.Study.2020.Table.3)
+#129880 0bservation with 24 variables
+summary(Case.Study.2020.Table.3)
+#Let's have a look at the missing values in each variable
+# Creating a function to count missing values
+p<- function(x){sum(is.na(x))/length(x)*100}
+# Applying the function to each column
+apply(Case.Study.2020.Table.3,2,p)
+# Highest number of missing values in Arrival Delay in Minutes
+md.pattern(Case.Study.2020.Table.3)
+md.pairs(Case.Study.2020.Table.3)
+# Here we will consider imputing values in cells with missing values rather than deleting those 
+# cells because deleting those rows can lead to loss of relevant data which can 
+# further lead to misappropriation
+# Now lets impute the missing values
+impute<- mice(Case.Study.2020.Table.3[,2:24], m=3, set.seed(123))
+print(impute)
+# m=3 generates 3 values for each missing values. Anyone of the values can be chossen
+# for imputation.
+impute$imp$Inflight.wifi.service
+impute$imp$Ease.of.Online.booking
+# The above command gives us the values generated during imoutation for each missing value.
+summary(Case.Study.2020.Table.3$Inflight.wifi.service)
+summary(Case.Study.2020.Table.3$Ease.of.Online.booking)
+# Looking at summary of the variables it is quite evident that the second set of imputation should
+# be selected to complete the dataset.
+Test_Data<- complete(impute,2)
+View(Test_Data)
+str(Test_Data)
+# Identifing the outliers in numeric attributes the dataset
+boxplot(Test_Data[,c(3,6,21,22)])
+summary(Test_Data$Age)
+summary(Test_Data$Flight.Distance)
+summary(Test_Data$Departure.Delay.in.Minutes)
+summary(Test_Data$Arrival.Delay.in.Minutes)
+# determining the inter quartile range
+IQR_Age = 51-27
+IQR_Flight.Dist= 1744-414 
+IQR_Dep.Delay = 12-0
+IQR_Arr.Delay = 13-0
+# Establishing upper fence for both
+Upfen_Age= 51 + 1.5*IQR_Age
+Upfen_Flight.Dist= 1744 + 1.5*IQR_Flight.Dist
+Upfen_Dep.Delay= 12 + 1.5*IQR_Dep.Delay
+Upfen_Arr.Delay =13 + 1.5*IQR_Arr.Delay
+# Eliminating Outliers
+Clean_Data<- subset( Test_Data, Test_Data$Age <= Upfen_Age & Test_Data$Flight.Distance <= Upfen_Flight.Dist & Test_Data$Departure.Delay.in.Minutes<= Upfen_Dep.Delay & Test_Data$Arrival.Delay.in.Minutes<= Upfen_Arr.Delay)
+summary(Clean_Data) 
+str(Clean_Data)
+boxplot(Clean_Data$Age)
+boxplot(Clean_Data$Flight.Distance)
+boxplot(Clean_Data$Departure.Delay.in.Minutes)
+boxplot(Clean_Data$Arrival.Delay.in.Minutes)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#Exploratory Data analysis
+#Lets check the distribution of value in different variables
+hist(Clean_Data$Age)
+hist(Clean_Data$Flight.Distance)
+hist(Clean_Data$Inflight.wifi.service)
+Cateogery_Var<- Clean_Data[,c(1,2,3,4,5,23)]
+Inflight_attribute2 <- Clean_Data[,c(5,6,7,11,13,14,15,16,19,21,22,23)]
+General_Attributes<- Clean_Data[,c(8,9,10,12,17,18,19,23)]
+View(Cateogery_Var)
+View(Inflight_attribute2)
+View(General_Attributes)
+str(Cat_Var)
+str(Inflight_attribute2)
+str(General_Attributes)
+#Checking the correlation between customer satisfaction & Cateogery variables
+Correlation_CustCat = hetcor(Cateogery_Var)
+Correlation_CustInflight = hetcor(Inflight_attribute2)
+Correlation_CustGeneral = hetcor(General_Attributes)
+# correlation
+View(Correlation_CustCat)
+View(Correlation_CustInflight)
+View(Correlation_CustGeneral)
+# According to the results of the degree ofcorrelation between Satisfaction and 
+#other attributes following variables are considered important for predicting 
+# Customer Satisfaction
+# Class(-0.6275)
+# Type of travel(-0.5836)
+#Online boarding(0.5794)
+# Baggage handling(0.3006)
+# Checkin service(0.2797)
+# Inflight service(0.2932)
+#Flight Distance(0.3483)
+# Seat comfort(0.4181)
+# In-flight entertainment(0.4807)
+# On-board service(0.3956)
+# Leg room(0.3818)
+str(Clean_Data)
+Fresh_Data<- Clean_Data[,c(4,5,6,12,13,14,15,16,17,18,20,23)]
+Batch1 <- sample.split(Fresh_Data$Satisfaction,SplitRatio = 0.5)
+batch1.1<- subset(Fresh_Data, Batch1=TRUE)
+batch1.2<- subset(Fresh_Data,Batch1=FALSE)
+# Creating test harness
+control<- trainControl(method = "repeatedcv", number= 10, repeats = 3)
+# Defining the test metrics
+metric<- "Accuracy"
+#Building model
+preProcess=c("center","scale")
+#Algorithm spot check 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Linear Discriminant Analysis
+set.seed(2)
+fit.lda <- train(Satisfaction ~., data=batch1.1, method="lda", metric=metric, preProc=c("center", "scale"), trControl=control)
+# Logistic Regression
+set.seed(2)
+fit.glm <- train(Satisfaction ~., data=batch1.1, method="glm", metric=metric, trControl=control)
+# GLMNET
+set.seed(2)
+fit.glmnet <- train(Satisfaction ~., data=batch1.1, method="glmnet", metric=metric, preProc=c("center", "scale"), trControl=control)
+# SVM Radial
+set.seed(2)
+fit.svmRadial <- train(Satisfaction ~., data=batch1.1, method="svmRadial", metric=metric, preProc=c("center", "scale"), trControl=control, fit=FALSE)
+# kNN
+set.seed(2)
+fit.knn <- train(Satisfaction ~., data=batch1.1, method="knn", metric=metric, preProc=c("center", "scale"), trControl=control)
+# Naive Bayes
+set.seed(2)
+fit.nb <- train(Satisfaction ~., data=batch1.1, method="nb", metric=metric, trControl=control)
+# CART
+set.seed(2)
+fit.cart <- train(Satisfaction ~., data=batch1.1, method="rpart", metric=metric, trControl=control)
+# C5.0
+set.seed(2)
+fit.c50 <- train(Satisfaction ~., data=batch1.1, method="C5.0", metric=metric, trControl=control)
+# Bagged CART
+set.seed(2)
+fit.treebag <- train(Satisfaction ~., data=batch1.1, method="treebag", metric=metric, trControl=control)
+# Random Forest
+set.seed(2)
+fit.rf <- train(Satisfaction ~., data=batch1.1, method="rf", metric=metric, trControl=control)
+# Stochastic Gradient Boosting (Generalized Boosted Modeling)
+set.seed(2)
+fit.gbm <- train(Satisfaction ~., data=batch1.1, method="gbm", metric=metric, trControl=control, verbose=FALSE)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+results <- resamples(list(lda=fit.lda,glmnet=fit.glmnet,
+                            svm=fit.svmRadial, knn=fit.knn, nb=fit.nb, cart=fit.cart, c50=fit.c50,
+                            bagging=fit.treebag, rf=fit.rf, gbm=fit.gbm))
+summary(results)
+# Based on the results, SVM method is selected for the dataset.
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
